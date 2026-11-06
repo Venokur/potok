@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import type { Profile } from '@/types'
 
-defineProps<{
+import AppSelect from './AppSelect.vue'
+
+const props = defineProps<{
   modelValue: string
   profiles: Profile[]
   id?: string
@@ -10,21 +14,23 @@ defineProps<{
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
-function onChange(event: Event) {
-  emit('update:modelValue', (event.target as HTMLSelectElement).value)
-}
+const options = computed(() =>
+  props.profiles.map((profile) => ({
+    value: profile.id,
+    label: profile.display_name || profile.email,
+    description: profile.email,
+  })),
+)
 </script>
 
 <template>
-  <select
+  <AppSelect
+    :model-value="modelValue"
+    :options="options"
     :id="id"
-    class="input"
-    :value="modelValue"
     :disabled="disabled"
-    @change="onChange"
-  >
-    <option v-for="profile in profiles" :key="profile.id" :value="profile.id">
-      {{ profile.display_name }} · {{ profile.email }}
-    </option>
-  </select>
+    placeholder="Выберите исполнителя"
+    aria-label="Исполнитель"
+    @update:model-value="emit('update:modelValue', $event)"
+  />
 </template>

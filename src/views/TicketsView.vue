@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import AppSelect from '@/components/AppSelect.vue'
 import Spinner from '@/components/Spinner.vue'
 import TicketCard from '@/components/TicketCard.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
-import { CATEGORY_OPTIONS, STATUS_LABELS, STATUS_OPTIONS } from '@/lib/constants'
+import {
+  CATEGORY_DOT_CLASSES,
+  CATEGORY_OPTIONS,
+  STATUS_LABELS,
+  STATUS_OPTIONS,
+} from '@/lib/constants'
 import { dataErrorMessage } from '@/lib/errors'
 import { pluralize } from '@/lib/format'
 import { fetchProfile } from '@/lib/team'
@@ -19,7 +25,7 @@ const toast = useToast()
 
 const tickets = ref<Ticket[]>([])
 const search = ref('')
-const category = ref<'all' | TicketCategory>('all')
+const category = ref('all')
 const boardFilter = ref<BoardFilter>('all')
 const canViewAll = ref<boolean | null>(null)
 const loading = ref(true)
@@ -35,6 +41,15 @@ let requestId = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 const columns = STATUS_OPTIONS
+
+const categoryOptions = computed(() => [
+  { value: 'all', label: 'Все категории', dotClass: 'bg-slate-300' },
+  ...CATEGORY_OPTIONS.map((option) => ({
+    value: option.value,
+    label: option.label,
+    dotClass: CATEGORY_DOT_CLASSES[option.value],
+  })),
+])
 
 const grouped = computed(() => {
   const result: Record<TicketStatus, Ticket[]> = {
@@ -82,7 +97,7 @@ async function load(mode: 'initial' | 'refresh' = 'refresh') {
     const data = await fetchTickets({
       search: search.value,
       assigneeId: boardFilter.value === 'me' ? user.value?.id : undefined,
-      category: category.value === 'all' ? undefined : category.value,
+      category: category.value === 'all' ? undefined : (category.value as TicketCategory),
     })
     if (currentRequest === requestId) tickets.value = data
   } catch (cause) {
@@ -241,14 +256,12 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
         </button>
         </div>
 
-        <div class="w-full sm:w-52">
-          <select v-model="category" class="input" aria-label="Фильтр по категории">
-            <option value="all">Все категории</option>
-            <option v-for="option in CATEGORY_OPTIONS" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </div>
+        <AppSelect
+          v-model="category"
+          compact
+          :options="categoryOptions"
+          aria-label="Фильтр по категории"
+        />
       </div>
 
       <div class="flex items-center justify-end gap-2">

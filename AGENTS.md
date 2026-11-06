@@ -58,7 +58,7 @@
 │  │  ├─ team.ts              # справочник сотрудников
 │  │  └─ tickets.ts           # задачи, комментарии, история
 │  ├─ composables/useAuth.ts, useToast.ts
-│  ├─ components/             # TicketCard, HistoryTimeline, UserAvatar, AssigneeSelect...
+│  ├─ components/             # AppSelect, TicketCard, HistoryTimeline, UserAvatar...
 │  └─ views/                  # Login, Register, Tickets (доска), TicketNew,
 │                             # TicketDetail, Settings, NotFound
 ├─ docker-compose.yml

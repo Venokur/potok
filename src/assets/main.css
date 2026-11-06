@@ -93,10 +93,25 @@
   transition: transform 0.2s ease;
 }
 
+.select-pop-enter-active,
+.select-pop-leave-active {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.select-pop-enter-from,
+.select-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .toast-enter-active,
   .toast-leave-active,
-  .toast-move {
+  .toast-move,
+  .select-pop-enter-active,
+  .select-pop-leave-active {
     transition: none;
   }
 }

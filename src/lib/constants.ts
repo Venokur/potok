@@ -49,6 +49,13 @@ export const CATEGORY_BADGE_CLASSES: Record<TicketCategory, string> = {
   other: 'bg-slate-100 text-slate-600 ring-slate-200',
 }
 
+export const CATEGORY_DOT_CLASSES: Record<TicketCategory, string> = {
+  bot: 'bg-indigo-500',
+  integration: 'bg-sky-500',
+  report: 'bg-emerald-500',
+  other: 'bg-slate-400',
+}
+
 export interface CategoryOption {
   value: TicketCategory
   label: string
