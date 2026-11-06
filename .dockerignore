@@ -1,0 +1,6 @@
+node_modules
+dist
+.git
+.env
+*.log
+scripts/tunnel-url.ps1

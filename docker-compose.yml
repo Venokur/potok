@@ -1,0 +1,133 @@
+name: potok
+
+# Демо-значения по умолчанию: `docker compose up --build` работает без .env.
+# Для своего окружения скопируйте .env.example в .env и поменяйте значения.
+x-supabase-env: &supabase-env
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+
+services:
+  db:
+    image: supabase/postgres:15.8.1.060
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      JWT_EXP: "3600"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1 -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  # В образе supabase/postgres служебные роли созданы без паролей.
+  # Задаём их из POSTGRES_PASSWORD, чтобы GoTrue и PostgREST могли подключиться.
+  db-setup:
+    image: supabase/postgres:15.8.1.060
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        psql -v ON_ERROR_STOP=1 -h db -U supabase_admin -d postgres -v pwd="$$POSTGRES_PASSWORD" <<'SQL'
+        alter role authenticator with password :'pwd';
+        alter role supabase_auth_admin with password :'pwd';
+        SQL
+        echo "✔ role passwords are set"
+    restart: "no"
+
+  migrate:
+    image: supabase/postgres:15.8.1.060
+    depends_on:
+      db-setup:
+        condition: service_completed_successfully
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./supabase/migrations:/migrations:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        for file in /migrations/*.sql; do
+          echo "→ applying $$file"
+          psql -v ON_ERROR_STOP=1 -h db -U supabase_admin -d postgres -f "$$file"
+        done
+        echo "✔ migrations complete"
+    restart: "no"
+
+  auth:
+    image: supabase/gotrue:v2.177.0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      PORT: "9999"
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres?search_path=auth&sslmode=disable
+      GOTRUE_SITE_URL: ${PUBLIC_URL:-http://localhost:8080}
+      API_EXTERNAL_URL: ${PUBLIC_URL:-http://localhost:8080}
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_PASSWORD_MIN_LENGTH: "6"
+      GOTRUE_SMTP_ADMIN_EMAIL: admin@potok.local
+      GOTRUE_LOG_LEVEL: warn
+      GOTRUE_RATE_LIMIT_HEADER: X-Forwarded-For
+    restart: unless-stopped
+
+  rest:
+    image: postgrest/postgrest:v12.2.12
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      PGRST_SERVER_PORT: "3000"
+      PGRST_LOG_LEVEL: error
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+    environment:
+      # Пусто — фронтенд использует origin, по которому открыто приложение.
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdG9rLWxvY2FsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzMDAwMDAsImV4cCI6MjA4ODAwMDAwMH0.LBch0AEseAYRU7pAaIjFnXCIf6T7a7y3aquAABL9Euo}
+    depends_on:
+      - auth
+      - rest
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # Публичный доступ из интернета без аккаунта Cloudflare.
+  # Ссылку смотрите в `docker compose logs tunnel`.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --protocol http2 --url http://app:80
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  db-data:

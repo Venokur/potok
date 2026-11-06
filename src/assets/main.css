@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-slate-200);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply min-h-dvh bg-slate-50 font-sans text-slate-900 antialiased;
+    background-image:
+      radial-gradient(48rem 32rem at 105% -10%, rgb(99 102 241 / 0.1), transparent 60%),
+      radial-gradient(40rem 28rem at -10% 5%, rgb(14 165 233 / 0.08), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  .input {
+    @apply block w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition outline-none placeholder:text-slate-400;
+  }
+
+  .input:focus {
+    @apply border-indigo-500 ring-4 ring-indigo-500/10;
+  }
+
+  .input:disabled {
+    @apply bg-slate-50 text-slate-500;
+  }
+
+  .input-error {
+    @apply border-rose-400;
+  }
+
+  .input-error:focus {
+    @apply border-rose-500 ring-rose-500/10;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-slate-700;
+  }
+
+  .field-error {
+    @apply mt-1.5 flex items-center gap-1.5 text-sm text-rose-600;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-500 focus-visible:ring-4 focus-visible:ring-indigo-500/30 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:ring-4 focus-visible:ring-slate-400/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-4 focus-visible:ring-slate-400/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .panel {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-900/5;
+  }
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.toast-move {
+  transition: transform 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-enter-active,
+  .toast-leave-active,
+  .toast-move {
+    transition: none;
+  }
+}

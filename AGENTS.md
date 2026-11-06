@@ -1,0 +1,181 @@
+# AGENTS.md
+
+Инструкции для AI-агентов и разработчиков, работающих в этом репозитории.
+
+## 1. Что это за проект
+
+«Поток» — общая канбан-доска задач на автоматизацию для команды. Сотрудник регистрируется,
+создаёт задачу, назначает исполнителя и ведёт её по этапам: **Новая → Уточнение → В работе →
+Завершена**. В задаче есть комментарии и история действий.
+
+Доска общая: задачи видны всем авторизованным сотрудникам. Менять задачу могут автор и
+исполнитель, удалять — только автор. Это проверяется Row Level Security в Postgres, а не
+скрытием кнопок в UI.
+
+Весь пользовательский интерфейс и тексты ошибок — на русском языке.
+
+## 2. Стек (не менять без согласования)
+
+- Vue 3.5+, Composition API, `<script setup>`, TypeScript
+- Vite 8
+- Tailwind CSS 4 — CSS-first конфигурация: `@import "tailwindcss";` в `src/assets/main.css`,
+  плагин `@tailwindcss/vite`. Никаких `tailwind.config.js` и `postcss.config.js`.
+- Vue Router 4
+- `@supabase/supabase-js` v2 — единственный клиент к данным (Auth + PostgREST)
+- Supabase локально: `supabase/postgres` + `supabase/gotrue` + `postgrest/postgrest`
+- Docker Compose, публичный доступ через Cloudflare quick tunnel
+
+Глобальное состояние (Pinia) не вводим, пока нет реальной необходимости — хватает composables.
+
+## 3. Структура
+
+```
+.
+├─ docker/
+│  ├─ nginx.conf              # SPA + reverse proxy на /auth/v1 и /rest/v1
+│  └─ entrypoint.sh           # генерация /config.js из переменных окружения
+├─ supabase/migrations/
+│  ├─ 0001_schema.sql         # tickets, проверки, индексы, триггер updated_at
+│  ├─ 0002_rls.sql            # исходные политики
+│  └─ 0003_shared_board.sql   # профили, исполнитель, комментарии, история, RLS доски
+├─ scripts/
+│  ├─ smoke-test.mjs          # 17 проверок доски, прав и истории
+│  ├─ seed-demo.mjs           # демо-сотрудники и задачи
+│  ├─ tunnel-url.ps1
+│  └─ tunnel-url.sh
+├─ src/
+│  ├─ main.ts, App.vue, assets/main.css
+│  ├─ router/index.ts         # guard на авторизацию
+│  ├─ lib/
+│  │  ├─ config.ts            # window.__APP_CONFIG__ ?? env ?? origin
+│  │  ├─ supabase.ts          # клиент
+│  │  ├─ constants.ts         # 4 этапа, категории, подписи
+│  │  ├─ errors.ts            # Supabase error -> понятный русский текст
+│  │  ├─ format.ts            # даты, склонения, имена, инициалы
+│  │  ├─ team.ts              # справочник сотрудников
+│  │  └─ tickets.ts           # задачи, комментарии, история
+│  ├─ composables/useAuth.ts, useToast.ts
+│  ├─ components/             # TicketCard, HistoryTimeline, UserAvatar, AssigneeSelect...
+│  └─ views/                  # Login, Register, Tickets (доска), TicketNew, TicketDetail
+├─ docker-compose.yml
+├─ Dockerfile
+└─ README.md
+```
+
+## 4. Команды
+
+```bash
+npm install
+npm run dev            # Vite, проксирует /auth/v1 и /rest/v1 на localhost:8080
+npm run build          # vue-tsc --noEmit + vite build
+npm run typecheck
+npm run seed           # демо: anna@potok.local / ivan@potok.local, пароль potok12345
+npm run smoke          # проверка RLS, прав, комментариев и истории
+
+docker compose up -d --build   # всё приложение, http://localhost:8080
+docker compose logs -f tunnel  # публичная ссылка trycloudflare.com
+```
+
+## 5. Данные и доступ
+
+### Профили
+
+`public.profiles(id, email, display_name)` — создаётся триггером на `auth.users` и
+бэкфиллится для существующих пользователей. Нужен для выбора исполнителя и подписей.
+Читают все авторизованные, менять может только свой профиль.
+
+### Задачи
+
+`public.tickets`:
+
+- `id uuid primary key` — генерирует **клиент** (`crypto.randomUUID()`), это защищает
+  от дубликатов при повторной отправке;
+- `user_id` — автор, `default auth.uid()`, FK на `profiles`;
+- `assignee_id` — исполнитель, `default auth.uid()`, FK на `profiles`;
+- `title` 1–200, `description` 1–5000, `category in ('bot','integration','report','other')`;
+- `status in ('new','clarification','in_progress','done')`, по умолчанию `new`;
+- `created_at`, `updated_at`; `updated_at` обновляет триггер.
+
+### Комментарии
+
+`public.comments(ticket_id, author_id, body 1–2000, created_at)`. Читает вся команда,
+писать можно только `author_id = auth.uid()`.
+
+### История
+
+`public.ticket_events(kind, payload, actor_id, created_at)`. Пишется только триггерами
+`security definer`; у `authenticated` есть лишь `select`. Клиент не может подделать историю.
+
+### RLS
+
+- `tickets`: select — все; insert — `user_id = auth.uid()`; update — автор или исполнитель;
+  delete — только автор.
+- `comments`: select — все; insert — только свой `author_id`.
+- `ticket_events`: select — все; запись — только триггеры.
+- `profiles`: select — все; insert/update — только свой профиль.
+- Автора нельзя подменить: `before update` триггер возвращает исходный `user_id`.
+
+Правила:
+
+- В браузер попадает только anon key. `service_role` — никогда.
+- Поиск и фильтры — на стороне PostgREST (`.ilike`, `.eq`), не фильтрация массива в UI.
+- Ошибки БД не показываем как есть: маппим в `src/lib/errors.ts`.
+- Новые таблицы/колонки — только новой идемпотентной миграцией в `supabase/migrations`.
+  Миграции выполняются от `supabase_admin` (нужно для триггера на `auth.users`).
+- После DDL — `notify pgrst, 'reload schema';`, иначе PostgREST не увидит изменения.
+
+## 6. Поведение интерфейса
+
+- Доска — 4 колонки по этапам; на мобильном они идут вертикально, на десктопе в ряд.
+- Карточку можно перетащить в другую колонку; смена этапа также доступна кнопками
+  в карточке задачи.
+- Создание: все поля обязательны, исполнитель выбирается из `profiles`, автор — текущий.
+- Пока идёт сохранение, кнопка disabled и показывает «Сохраняем…»/«Создаём…»;
+  повторный клик не отправляет второй запрос.
+- После успеха — тост и обновлённые данные; после ошибки — понятное сообщение.
+- Наблюдатель (не автор и не исполнитель) видит задачу, комментарии и историю,
+  но не видит форму редактирования, а этапы заблокированы.
+- Пустые состояния: нет задач в колонке, нет комментариев, пустая история.
+- Мобильный first, тач-таргеты ≥ 44px; никаких `alert()`/`confirm()`.
+- Доступность: label у полей, видимый фокус, `aria-invalid`/`aria-describedby` у ошибок.
+
+## 7. Docker и публичный доступ
+
+`docker compose up --build` должен работать на чистой машине без `.env`.
+
+- Единственный публичный порт — `8080` (`app`). nginx проксирует `/auth/v1` → GoTrue,
+  `/rest/v1` → PostgREST, поэтому CORS не нужен.
+- `SUPABASE_URL` по умолчанию пустой: фронтенд берёт `window.location.origin`,
+  чтобы работать и на localhost, и по ссылке туннеля.
+- `docker/entrypoint.sh` пишет `/config.js` из env — пересборка при смене адреса не нужна.
+- `tunnel` — Cloudflare quick tunnel без аккаунта; ссылка в `docker compose logs tunnel`.
+  Адрес меняется после перезапуска контейнера.
+- `db-setup` задаёт пароли ролям `authenticator` и `supabase_auth_admin`
+  (в образе они созданы без паролей), затем `migrate` применяет миграции,
+  а `auth`/`rest` ждут успешного завершения миграций.
+- Демо-значения секретов лежат в compose осознанно (тестовое задание). В README описано,
+  что менять для продакшена.
+
+## 8. Definition of Done
+
+- [ ] Регистрация, вход, выход; сессия переживает перезагрузку страницы.
+- [ ] Задача создаётся с названием, описанием, категорией и исполнителем.
+- [ ] Доска показывает задачи всех сотрудников, а не только свои.
+- [ ] Этапы: Новая, Уточнение, В работе, Завершена; меняются кнопками и drag&drop.
+- [ ] Комментарии видны команде и пишутся от своего имени.
+- [ ] История фиксирует создание, смену этапа/исполнителя, правки и комментарии.
+- [ ] Наблюдатель не может менять задачу; исполнитель не может подменить автора.
+- [ ] RLS проверен: `npm run smoke` проходит.
+- [ ] Ошибки и успех показываются понятным текстом.
+- [ ] Двойной клик по «Создать» даёт одну задачу.
+- [ ] 390px, 768px и десктоп выглядят нормально.
+- [ ] `docker compose up --build` поднимает рабочее приложение, ссылка туннеля открывается.
+
+## 9. Чего не делать
+
+- Не отключать RLS и не «фильтровать» доступ только в UI.
+- Не использовать `service_role` во фронтенде и не коммитить реальные секреты.
+- Не разрешать запись в `ticket_events` из клиента — история должна быть доверенной.
+- Не добавлять UI-киты (Vuetify, PrimeVue) — только Tailwind.
+- Не хранить русские подписи этапов в БД.
+- Не оставлять `console.log` и заглушки `TODO` в сдаваемом коде.
