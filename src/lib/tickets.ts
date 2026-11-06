@@ -1,6 +1,7 @@
 import type {
   Profile,
   Ticket,
+  TicketCategory,
   TicketComment,
   TicketEvent,
   TicketInput,
@@ -76,6 +77,7 @@ function escapeLike(value: string): string {
 export interface TicketFilters {
   search?: string
   assigneeId?: string
+  category?: TicketCategory
 }
 
 /** Общая доска: возвращает задачи всех сотрудников (RLS разрешает чтение команде). */
@@ -84,6 +86,10 @@ export async function fetchTickets(filters: TicketFilters = {}): Promise<Ticket[
 
   if (filters.assigneeId) {
     query = query.eq('assignee_id', filters.assigneeId)
+  }
+
+  if (filters.category) {
+    query = query.eq('category', filters.category)
   }
 
   const search = filters.search?.trim()

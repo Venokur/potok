@@ -1,5 +1,6 @@
-// Проверка общей доски: видимость задач для команды, права автора/исполнителя,
-// комментарии и история действий.
+// Проверка приватности доски: по умолчанию пользователь видит только свои задачи
+// и назначенные на него; обзор всей команды включается персональной настройкой.
+// Дополнительно проверяются комментарии, история, права и фильтр по категории.
 //
 // Запуск: npm run smoke  (или node scripts/smoke-test.mjs)
 // Требует запущенный `docker compose up` и Node.js 20+.
@@ -42,114 +43,159 @@ const anna = await signUp('anna')
 const ivan = await signUp('ivan')
 const oleg = await signUp('oleg')
 
-const ticketSelect =
-  '*,author:profiles!tickets_user_id_fkey(display_name),assignee:profiles!tickets_assignee_id_fkey(display_name),comments(count)'
-
 const ticketId = crypto.randomUUID()
-let ticketRemoved = false
+const otherTicketId = crypto.randomUUID()
+let cleaned = false
 
 try {
-  const profiles = await oleg.client.from('profiles').select('id,email')
-  check(
-    'справочник сотрудников доступен',
-    (profiles.data ?? []).some((profile) => profile.id === ivan.id),
-    profiles.error?.message,
-  )
+  const olegProfile = await oleg.client
+    .from('profiles')
+    .select('can_view_all_tickets')
+    .eq('id', oleg.id)
+    .single()
+  check('обзор команды по умолчанию выключен', olegProfile.data?.can_view_all_tickets === false)
 
   const created = await anna.client
     .from('tickets')
     .insert({
       id: ticketId,
       title: `Smoke-задача ${stamp}`,
-      description: 'Проверяем общую доску, исполнителя, комментарии и историю.',
+      description: 'Проверяем приватность, назначение, комментарии и историю.',
       category: 'bot',
       assignee_id: ivan.id,
     })
-    .select(ticketSelect)
+    .select(
+      '*,author:profiles!tickets_user_id_fkey(display_name),assignee:profiles!tickets_assignee_id_fkey(display_name)',
+    )
     .single()
 
-  check('задача создана и назначена исполнителю', created.data?.assignee_id === ivan.id, created.error?.message)
-  check('новая задача получает этап new', created.data?.status === 'new')
-  check('к задаче приходят автор и исполнитель', Boolean(created.data?.author && created.data?.assignee))
+  check('автор создаёт задачу и назначает исполнителя', created.data?.assignee_id === ivan.id, created.error?.message)
 
-  const listIvan = await ivan.client.from('tickets').select('id').eq('id', ticketId)
-  check('исполнитель видит задачу, созданную другим', (listIvan.data ?? []).length === 1)
+  const annaSees = await anna.client.from('tickets').select('id').eq('id', ticketId)
+  check('автор видит свою задачу', (annaSees.data ?? []).length === 1)
 
-  const listOleg = await oleg.client.from('tickets').select('id').eq('id', ticketId)
-  check('третий сотрудник видит задачу на общей доске', (listOleg.data ?? []).length === 1)
+  const ivanSees = await ivan.client.from('tickets').select('id').eq('id', ticketId)
+  check('исполнитель видит назначенную задачу', (ivanSees.data ?? []).length === 1)
 
-  const updateByOleg = await oleg.client
-    .from('tickets')
-    .update({ status: 'done' })
-    .eq('id', ticketId)
-    .select()
-  check('наблюдатель не может менять чужую задачу', (updateByOleg.data ?? []).length === 0)
+  const olegList = await oleg.client.from('tickets').select('id')
+  check('посторонний не видит чужую задачу в списке', (olegList.data ?? []).length === 0)
 
-  const statusByIvan = await ivan.client
+  const olegRead = await oleg.client.from('tickets').select('id').eq('id', ticketId).maybeSingle()
+  check('посторонний не читает чужую задачу по id', olegRead.data === null)
+
+  const ivanStatus = await ivan.client
     .from('tickets')
     .update({ status: 'clarification' })
     .eq('id', ticketId)
     .select('status')
     .single()
-  check('исполнитель переводит задачу в «Уточнение»', statusByIvan.data?.status === 'clarification')
-
-  const hijack = await ivan.client
-    .from('tickets')
-    .update({ user_id: ivan.id })
-    .eq('id', ticketId)
-    .select('user_id')
-    .single()
-  check('исполнитель не может подменить автора', hijack.data?.user_id === anna.id)
+  check('исполнитель переводит задачу в «Уточнение»', ivanStatus.data?.status === 'clarification')
 
   const comment = await ivan.client
     .from('comments')
     .insert({ ticket_id: ticketId, body: 'Уточните, пожалуйста, детали.' })
-    .select('*,author:profiles!comments_author_id_fkey(display_name)')
+    .select('id')
     .single()
-  check('исполнитель оставляет комментарий', Boolean(comment.data), comment.error?.message)
+  check('исполнитель комментирует назначенную задачу', Boolean(comment.data), comment.error?.message)
 
-  const commentsByOleg = await oleg.client.from('comments').select('id').eq('ticket_id', ticketId)
-  check('комментарий видит вся команда', (commentsByOleg.data ?? []).length === 1)
+  const olegComments = await oleg.client.from('comments').select('id').eq('ticket_id', ticketId)
+  check('посторонний не видит комментарии', (olegComments.data ?? []).length === 0)
 
-  const forged = await oleg.client
+  const olegEvents = await oleg.client.from('ticket_events').select('id').eq('ticket_id', ticketId)
+  check('посторонний не видит историю', (olegEvents.data ?? []).length === 0)
+
+  const olegCommentAttempt = await oleg.client
     .from('comments')
-    .insert({ ticket_id: ticketId, author_id: ivan.id, body: 'Чужое авторство' })
-  check('нельзя писать комментарий от чужого имени', Boolean(forged.error))
+    .insert({ ticket_id: ticketId, body: 'Чужой комментарий' })
+  check('посторонний не может комментировать чужую задачу', Boolean(olegCommentAttempt.error))
 
-  const reassigned = await anna.client
+  const olegUpdate = await oleg.client
     .from('tickets')
-    .update({ assignee_id: oleg.id })
+    .update({ status: 'done' })
     .eq('id', ticketId)
-    .select('assignee_id')
-    .single()
-  check('автор переназначает исполнителя', reassigned.data?.assignee_id === oleg.id)
+    .select()
+  check('посторонний не может менять чужую задачу', (olegUpdate.data ?? []).length === 0)
 
-  const events = await oleg.client
-    .from('ticket_events')
-    .select('kind')
-    .eq('ticket_id', ticketId)
-    .order('created_at')
-  const kinds = (events.data ?? []).map((event) => event.kind)
-  check('история доступна наблюдателю', (events.data ?? []).length >= 4, events.error?.message)
+  const olegHijack = await oleg.client
+    .from('profiles')
+    .update({ can_view_all_tickets: true })
+    .eq('id', anna.id)
+    .select()
+  check('нельзя включить обзор другому сотруднику', (olegHijack.data ?? []).length === 0)
+
+  const enabled = await oleg.client
+    .from('profiles')
+    .update({ can_view_all_tickets: true })
+    .eq('id', oleg.id)
+    .select('can_view_all_tickets')
+    .single()
+  check('пользователь включает обзор своей настройкой', enabled.data?.can_view_all_tickets === true)
+
+  const olegSeesTicket = await oleg.client.from('tickets').select('id').eq('id', ticketId)
+  check('с включённым обзором видна чужая задача', (olegSeesTicket.data ?? []).length === 1)
+
+  const olegSeesComments = await oleg.client.from('comments').select('id').eq('ticket_id', ticketId)
+  check('с обзором видны комментарии', (olegSeesComments.data ?? []).length === 1)
+
+  const olegSeesHistory = await oleg.client.from('ticket_events').select('kind').eq('ticket_id', ticketId)
+  const kinds = (olegSeesHistory.data ?? []).map((event) => event.kind)
   check(
-    'история фиксирует создание, этап, комментарий и исполнителя',
-    ['created', 'status_changed', 'comment_added', 'assignee_changed'].every((kind) =>
-      kinds.includes(kind),
-    ),
+    'с обзором видна история',
+    ['created', 'status_changed', 'comment_added'].every((kind) => kinds.includes(kind)),
     kinds.join(', '),
+  )
+
+  const olegUpdateWithView = await oleg.client
+    .from('tickets')
+    .update({ title: 'Взлом' })
+    .eq('id', ticketId)
+    .select()
+  check('обзор не даёт права менять чужую задачу', (olegUpdateWithView.data ?? []).length === 0)
+
+  const disabled = await oleg.client
+    .from('profiles')
+    .update({ can_view_all_tickets: false })
+    .eq('id', oleg.id)
+    .select('can_view_all_tickets')
+    .single()
+  check('обзор можно выключить', disabled.data?.can_view_all_tickets === false)
+
+  const olegAfterOff = await oleg.client.from('tickets').select('id').eq('id', ticketId)
+  check('после выключения чужая задача снова скрыта', (olegAfterOff.data ?? []).length === 0)
+
+  const second = await anna.client
+    .from('tickets')
+    .insert({
+      id: otherTicketId,
+      title: `Smoke-отчёт ${stamp}`,
+      description: 'Проверяем фильтр по категории.',
+      category: 'report',
+      assignee_id: anna.id,
+    })
+    .select('id')
+    .single()
+  check('вторая задача создана', Boolean(second.data), second.error?.message)
+
+  const reportFilter = await anna.client.from('tickets').select('id,category').eq('category', 'report')
+  check(
+    'фильтр по категории возвращает только нужное',
+    (reportFilter.data ?? []).length === 1 && reportFilter.data?.[0]?.id === otherTicketId,
   )
 
   const deleteByIvan = await ivan.client.from('tickets').delete().eq('id', ticketId).select()
   check('исполнитель не может удалить чужую задачу', (deleteByIvan.data ?? []).length === 0)
 
   const deleteByAnna = await anna.client.from('tickets').delete().eq('id', ticketId).select().single()
-  check('автор удаляет задачу', deleteByAnna.data?.id === ticketId)
-  ticketRemoved = true
+  check('автор удаляет свою задачу', deleteByAnna.data?.id === ticketId)
+
+  await anna.client.from('tickets').delete().eq('id', otherTicketId)
+  cleaned = true
 } catch (error) {
   check('сценарий выполнен без исключений', false, String(error))
 } finally {
-  if (!ticketRemoved) {
+  if (!cleaned) {
     await anna.client.from('tickets').delete().eq('id', ticketId)
+    await anna.client.from('tickets').delete().eq('id', otherTicketId)
   }
   await anna.client.auth.signOut()
   await ivan.client.auth.signOut()

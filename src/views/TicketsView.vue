@@ -5,11 +5,12 @@ import Spinner from '@/components/Spinner.vue'
 import TicketCard from '@/components/TicketCard.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
-import { STATUS_LABELS, STATUS_OPTIONS } from '@/lib/constants'
+import { CATEGORY_OPTIONS, STATUS_LABELS, STATUS_OPTIONS } from '@/lib/constants'
 import { dataErrorMessage } from '@/lib/errors'
 import { pluralize } from '@/lib/format'
+import { fetchProfile } from '@/lib/team'
 import { fetchTickets, updateTicketStatus } from '@/lib/tickets'
-import type { Ticket, TicketStatus } from '@/types'
+import type { Ticket, TicketCategory, TicketStatus } from '@/types'
 
 type BoardFilter = 'all' | 'me'
 
@@ -18,7 +19,9 @@ const toast = useToast()
 
 const tickets = ref<Ticket[]>([])
 const search = ref('')
+const category = ref<'all' | TicketCategory>('all')
 const boardFilter = ref<BoardFilter>('all')
+const canViewAll = ref<boolean | null>(null)
 const loading = ref(true)
 const refreshing = ref(false)
 const error = ref('')
@@ -61,7 +64,12 @@ const subtitle = computed(() => {
   return myCount.value > 0 ? `${count} · ${myCount.value} на вас` : count
 })
 
-const hasFilters = computed(() => search.value.trim().length > 0 || boardFilter.value !== 'all')
+const hasFilters = computed(
+  () =>
+    search.value.trim().length > 0 ||
+    boardFilter.value !== 'all' ||
+    category.value !== 'all',
+)
 
 async function load(mode: 'initial' | 'refresh' = 'refresh') {
   const currentRequest = ++requestId
@@ -74,6 +82,7 @@ async function load(mode: 'initial' | 'refresh' = 'refresh') {
     const data = await fetchTickets({
       search: search.value,
       assigneeId: boardFilter.value === 'me' ? user.value?.id : undefined,
+      category: category.value === 'all' ? undefined : category.value,
     })
     if (currentRequest === requestId) tickets.value = data
   } catch (cause) {
@@ -131,15 +140,30 @@ async function onDrop(status: TicketStatus) {
 function resetFilters() {
   search.value = ''
   boardFilter.value = 'all'
+  category.value = 'all'
 }
 
 watch(boardFilter, () => load())
+watch(category, () => load())
 watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => load(), 300)
 })
 
-onMounted(() => load('initial'))
+onMounted(() => {
+  load('initial')
+
+  if (user.value) {
+    fetchProfile(user.value.id)
+      .then((profile) => {
+        canViewAll.value = profile.can_view_all_tickets ?? false
+      })
+      .catch(() => {
+        canViewAll.value = null
+      })
+  }
+})
+
 onBeforeUnmount(() => clearTimeout(searchTimer))
 </script>
 
@@ -173,9 +197,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
     </div>
 
     <div
-      class="panel mt-6 flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between"
+      class="panel mt-6 flex flex-col gap-3 p-3.5 lg:flex-row lg:items-center lg:justify-between"
     >
-      <div class="relative w-full sm:max-w-sm">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div class="relative w-full sm:w-72">
         <svg
           class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
           viewBox="0 0 24 24"
@@ -214,9 +239,19 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
             <path d="M6 6l12 12M18 6 6 18" />
           </svg>
         </button>
+        </div>
+
+        <div class="w-full sm:w-52">
+          <select v-model="category" class="input" aria-label="Фильтр по категории">
+            <option value="all">Все категории</option>
+            <option v-for="option in CATEGORY_OPTIONS" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center justify-end gap-2">
         <Spinner v-if="refreshing" :size="14" class="shrink-0 text-slate-400" />
         <div class="inline-flex rounded-xl bg-slate-100 p-1" role="group" aria-label="Фильтр доски">
           <button
@@ -247,6 +282,60 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
           </button>
         </div>
       </div>
+    </div>
+
+    <div
+      v-if="canViewAll !== null"
+      class="mt-3 flex flex-col gap-2 rounded-xl border px-4 py-3 text-xs leading-relaxed sm:flex-row sm:items-center sm:justify-between"
+      :class="
+        canViewAll
+          ? 'border-indigo-200 bg-indigo-50/60 text-indigo-800'
+          : 'border-slate-200 bg-white text-slate-600'
+      "
+    >
+      <p class="flex items-start gap-2">
+        <svg
+          v-if="canViewAll"
+          class="mt-0.5 size-3.5 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="2.5" />
+        </svg>
+        <svg
+          v-else
+          class="mt-0.5 size-3.5 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="4" y="10" width="16" height="10" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+        </svg>
+        <span v-if="canViewAll">
+          Обзор всей доски включён: видны задачи команды, но менять чужие задачи по-прежнему
+          могут только автор и исполнитель.
+        </span>
+        <span v-else>
+          Приватный режим: видны только ваши задачи и задачи, назначенные на вас.
+        </span>
+      </p>
+      <RouterLink
+        :to="{ name: 'settings' }"
+        class="shrink-0 font-semibold underline decoration-current/30 underline-offset-2 transition hover:decoration-current"
+      >
+        {{ canViewAll ? 'Изменить настройку' : 'Показать всю доску' }}
+      </RouterLink>
     </div>
 
     <div v-if="loading" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -368,8 +457,9 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
         <circle cx="9" cy="8" r="3" />
         <path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5M18.5 20a6 6 0 0 0-2.5-4.9" />
       </svg>
-      Доска общая для команды: задачи видны всем сотрудникам, менять их могут автор и исполнитель.
-      Права проверяются политиками Supabase RLS, а действия попадают в историю.
+      По умолчанию доска приватная: вы видите свои задачи и назначенные на вас. Обзор всей
+      команды включается в настройках. Права проверяются политиками Supabase RLS, а действия
+      попадают в историю.
     </p>
   </div>
 </template>

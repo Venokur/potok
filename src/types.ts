@@ -8,6 +8,7 @@ export interface Profile {
   id: string
   email: string
   display_name: string
+  can_view_all_tickets?: boolean
 }
 
 export interface Ticket {
