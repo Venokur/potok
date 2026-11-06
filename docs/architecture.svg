@@ -241,13 +241,4 @@
   <text x="118" y="970" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="12.5" fill="#64748b">
     локальный доступ
   </text>
-
-  <!-- n8n -->
-  <rect x="470" y="900" width="980" height="64" rx="14" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" />
-  <text x="494" y="927" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="13" font-weight="600" fill="#334155">
-    n8n в этом решении не используется.
-  </text>
-  <text x="494" y="948" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="12.5" fill="#64748b">
-    Автоматизация задач выполняется внутри приложения и Supabase; отдельного инстанса n8n и доступов к нему нет.
-  </text>
 </svg>
