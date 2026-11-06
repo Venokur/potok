@@ -7,6 +7,8 @@
 **Стек:** Vue 3 (Composition API, TypeScript) · Vite 8 · Tailwind CSS 4 · Supabase
 (Postgres + GoTrue + PostgREST) · Docker Compose · Cloudflare Tunnel.
 
+📄 **[PDF-описание проекта](docs/potok-project.pdf)** — архитектура, доступы и инструкция запуска.
+
 ---
 
 ## Быстрый старт
