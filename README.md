@@ -5,7 +5,7 @@
 свои задачи и назначенные на вас. Обзор всей команды включается персональной настройкой.
 
 **Стек:** Vue 3 (Composition API, TypeScript) · Vite 8 · Tailwind CSS 4 · Supabase
-(Postgres + GoTrue + PostgREST) · Docker Compose · Cloudflare Tunnel.
+(Postgres + GoTrue + PostgREST) · Docker Compose.
 
 📄 **[PDF-описание проекта](docs/potok-project.pdf)** — архитектура, доступы и инструкция запуска.
 
@@ -21,11 +21,8 @@ docker compose up --build
 ```
 
 - Приложение: **http://localhost:8080**
-- Внешний адрес: `docker compose logs -f tunnel` — строка вида
-  `https://something-something.trycloudflare.com`.
-  Можно короче:
-  - Windows: `powershell -ExecutionPolicy Bypass -File scripts\tunnel-url.ps1`
-  - macOS/Linux: `./scripts/tunnel-url.sh`
+- Доступ из интернета не настроен: проект запускается локально и доступен в локальной
+  сети по адресу `http://<IP-компьютера>:8080`.
 
 Первый запуск скачивает образы Supabase (несколько минут). Пароли и ключи для демо
 уже прописаны в `docker-compose.yml`, создавать `.env` не нужно.
@@ -108,12 +105,13 @@ npm run seed
 
 - **Один origin.** nginx проксирует Auth и REST на себя, поэтому фронтенд обращается
   к `/auth/v1` и `/rest/v1` относительно текущего адреса. Нет CORS, и приложение
-  одинаково работает на `localhost` и по ссылке туннеля без пересборки.
+  работает на `localhost` без дополнительной настройки.
 - **Настоящий Supabase.** Используются официальные образы `supabase/postgres`,
   `supabase/gotrue`, `postgrest/postgrest` — те же компоненты, что и в Supabase Cloud.
   Полный стек со Studio/Storage/Realtime не нужен и только замедляет запуск.
-- **Публичный доступ.** `cloudflared` поднимает исходящее соединение и выдаёт
-  HTTPS-адрес без аккаунта и настройки роутера.
+- **Локальный доступ.** Docker публикует только порт `8080`; снаружи приложение
+  не открыто. При необходимости внешний доступ можно добавить отдельным
+  reverse-proxy, не меняя приложение.
 
 ### Сервисы compose
 
@@ -125,7 +123,6 @@ npm run seed
 | `auth`     | GoTrue: регистрация, вход, JWT               | —           |
 | `rest`     | PostgREST: REST API поверх Postgres + RLS    | —           |
 | `app`      | nginx + собранный Vue SPA                    | `8080`      |
-| `tunnel`   | Cloudflare quick tunnel → `app:80`           | —           |
 
 ---
 
@@ -250,11 +247,10 @@ npm run smoke      # проверка RLS и сценариев
 - Регистрация открыта всем, у кого есть ссылка; подтверждение email отключено.
 - Справочник сотрудников виден всем авторизованным (так работает назначение задач).
 - Демо-пароль у seed-аккаунтов одинаковый и опубликован.
-- Quick tunnel выдаёт новый адрес после перезапуска контейнера `tunnel`.
 - Нет SMTP: письма (подтверждение почты, восстановление пароля) не отправляются.
 
-Для продакшена: секреты в vault, HTTPS и Cloudflare Access (или другой слой
-аутентификации перед приложением), SMTP, ограничение регистрации, бэкапы volume.
+Для продакшена: секреты в vault, HTTPS и слой аутентификации перед приложением,
+SMTP, ограничение регистрации, бэкапы volume.
 
 ---
 
@@ -271,8 +267,6 @@ docker compose up -d --build              # пересобрать после и
 ## Если что-то не работает
 
 - **Порт 8080 занят** — поменяйте маппинг в `docker-compose.yml` (`"8080:80"`) на свободный.
-- **Ссылка туннеля не открывается** — quick tunnel не даёт гарантий uptime. Перезапустите
-  `docker compose restart tunnel` и возьмите новый адрес из логов.
 - **Поменяли `POSTGRES_PASSWORD` после первого запуска** — старый пароль уже записан в volume.
   Сбросьте данные: `docker compose down -v`, затем `docker compose up --build`.
 - **Пустая страница или 502** — `docker compose ps` и `docker compose logs app auth rest`.

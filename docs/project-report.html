@@ -423,18 +423,13 @@
           <span class="tag">Supabase</span>
           <span class="tag">PostgreSQL + RLS</span>
           <span class="tag">Docker Compose</span>
-          <span class="tag">Cloudflare Tunnel</span>
         </div>
       </header>
 
       <div class="meta">
         <div class="meta-card">
-          <div class="meta-label">Публичный адрес</div>
-          <div class="meta-value mono">
-            <a href="https://cocktail-relax-required-student.trycloudflare.com">
-              cocktail-relax-required-student.trycloudflare.com
-            </a>
-          </div>
+          <div class="meta-label">Доступ в локальной сети</div>
+          <div class="meta-value mono">http://&lt;IP&gt;:8080</div>
         </div>
         <div class="meta-card">
           <div class="meta-label">Локальный адрес</div>
@@ -468,8 +463,8 @@
           «Поток» — SPA на Vue 3, которая работает с локальным Supabase: GoTrue отвечает
           за регистрацию и JWT, PostgREST — за REST API, PostgreSQL — за данные и
           Row Level Security. nginx раздаёт интерфейс и проксирует API на том же origin,
-          поэтому приложение одинаково работает на <b>localhost</b> и по HTTPS-ссылке
-          туннеля без CORS и пересборки. Всё поднимается одной командой Docker Compose.
+          поэтому приложение работает локально на <b>localhost:8080</b> без CORS
+          и пересборки. Всё поднимается одной командой Docker Compose.
         </p>
       </section>
 
@@ -480,9 +475,6 @@
 
 <span class="comment"># приложение</span>
 http://localhost:8080
-
-<span class="comment"># публичная ссылка туннеля (меняется после restart tunnel)</span>
-docker compose logs tunnel
 </div>
         <p class="caption">
           Нужен Docker Desktop. Первый запуск скачивает образы Supabase. Данные хранятся
@@ -533,7 +525,7 @@ docker compose logs tunnel
       <h2>Архитектура</h2>
       <img class="diagram" src="architecture-report.svg" alt="Схема архитектуры проекта Поток" />
       <p class="caption">
-        Схема реализации: браузер → cloudflared → nginx + Vue SPA → GoTrue / PostgREST →
+        Схема реализации: браузер → nginx + Vue SPA → GoTrue / PostgREST →
         PostgreSQL с RLS. Все контейнеры, кроме браузера, запускаются в Docker Compose.
       </p>
 
@@ -552,7 +544,7 @@ docker compose logs tunnel
             <p>
               nginx отдаёт собранный Vue SPA и проксирует <b>/auth/v1/*</b> в GoTrue,
               а <b>/rest/v1/*</b> в PostgREST. Браузер всегда обращается к текущему
-              адресу, поэтому нет CORS, а ссылка туннеля работает без пересборки.
+              адресу, поэтому нет CORS, а приложение работает на localhost без пересборки.
             </p>
           </div>
           <div class="card">
@@ -773,7 +765,7 @@ docker compose logs tunnel
         </div>
         <div class="icon-line">
           <span class="dot"></span>
-          <span>Ссылка Cloudflare Tunnel временная и меняется после перезапуска контейнера.</span>
+          <span>Внешний доступ не настроен: приложение работает локально на порту 8080.</span>
         </div>
         <div class="icon-line">
           <span class="dot"></span>
@@ -783,12 +775,12 @@ docker compose logs tunnel
 
       <div class="footer">
         <div>
-          <b>Поток</b> · тестовое задание · 6 ноября 2026<br />
+          <b>Поток</b> · тестовое задание · 10 ноября 2026<br />
           github.com/Venokur/potok
         </div>
         <div style="text-align: right">
           Vue 3 · Supabase · Docker<br />
-          cocktail-relax-required-student.trycloudflare.com
+          http://localhost:8080
         </div>
       </div>
     </section>

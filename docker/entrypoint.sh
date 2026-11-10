@@ -6,7 +6,7 @@ set -eu
 CONFIG_FILE=/usr/share/nginx/html/config.js
 
 # Адрес Supabase по умолчанию не задаём: фронтенд берёт текущий origin,
-# поэтому приложение работает и на localhost, и по ссылке туннеля.
+# поэтому приложение работает на localhost без привязки к конкретному адресу.
 cat > "$CONFIG_FILE" <<EOF
 window.__APP_CONFIG__ = {
   supabaseUrl: "${SUPABASE_URL:-}",

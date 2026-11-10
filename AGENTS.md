@@ -25,7 +25,7 @@
 - Vue Router 4
 - `@supabase/supabase-js` v2 — единственный клиент к данным (Auth + PostgREST)
 - Supabase локально: `supabase/postgres` + `supabase/gotrue` + `postgrest/postgrest`
-- Docker Compose, публичный доступ через Cloudflare quick tunnel
+- Docker Compose; приложение доступно локально на порту `8080`
 
 Глобальное состояние (Pinia) не вводим, пока нет реальной необходимости — хватает composables.
 
@@ -43,9 +43,7 @@
 │  └─ 0004_user_visibility.sql # приватность по умолчанию и настройка обзора
 ├─ scripts/
 │  ├─ smoke-test.mjs          # 24 проверки приватности, прав и истории
-│  ├─ seed-demo.mjs           # демо-сотрудники и задачи
-│  ├─ tunnel-url.ps1
-│  └─ tunnel-url.sh
+│  └─ seed-demo.mjs           # демо-сотрудники и задачи
 ├─ src/
 │  ├─ main.ts, App.vue, assets/main.css
 │  ├─ router/index.ts         # guard на авторизацию
@@ -77,7 +75,7 @@ npm run seed           # демо: anna@potok.local / ivan@potok.local, паро
 npm run smoke          # проверка RLS, прав, комментариев и истории
 
 docker compose up -d --build   # всё приложение, http://localhost:8080
-docker compose logs -f tunnel  # публичная ссылка trycloudflare.com
+docker compose logs -f app auth rest  # логи
 ```
 
 ## 5. Данные и доступ
@@ -154,22 +152,21 @@ docker compose logs -f tunnel  # публичная ссылка trycloudflare.c
 - Мобильный first, тач-таргеты ≥ 44px; никаких `alert()`/`confirm()`.
 - Доступность: label у полей, видимый фокус, `aria-invalid`/`aria-describedby` у ошибок.
 
-## 7. Docker и публичный доступ
+## 7. Docker и локальный запуск
 
 `docker compose up --build` должен работать на чистой машине без `.env`.
 
-- Единственный публичный порт — `8080` (`app`). nginx проксирует `/auth/v1` → GoTrue,
+- Единственный открытый порт — `8080` (`app`). nginx проксирует `/auth/v1` → GoTrue,
   `/rest/v1` → PostgREST, поэтому CORS не нужен.
 - `SUPABASE_URL` по умолчанию пустой: фронтенд берёт `window.location.origin`,
-  чтобы работать и на localhost, и по ссылке туннеля.
+  чтобы работать на `localhost` без дополнительной настройки.
 - `docker/entrypoint.sh` пишет `/config.js` из env — пересборка при смене адреса не нужна.
-- `tunnel` — Cloudflare quick tunnel без аккаунта; ссылка в `docker compose logs tunnel`.
-  Адрес меняется после перезапуска контейнера.
 - `db-setup` задаёт пароли ролям `authenticator` и `supabase_auth_admin`
   (в образе они созданы без паролей), затем `migrate` применяет миграции,
   а `auth`/`rest` ждут успешного завершения миграций.
 - Демо-значения секретов лежат в compose осознанно (тестовое задание). В README описано,
   что менять для продакшена.
+- Внешний доступ в проект не входит: приложение запускается локально на порту `8080`.
 
 ## 8. Definition of Done
 
@@ -187,7 +184,7 @@ docker compose logs -f tunnel  # публичная ссылка trycloudflare.c
 - [ ] Ошибки и успех показываются понятным текстом.
 - [ ] Двойной клик по «Создать» даёт одну задачу.
 - [ ] 390px, 768px и десктоп выглядят нормально.
-- [ ] `docker compose up --build` поднимает рабочее приложение, ссылка туннеля открывается.
+- [ ] `docker compose up --build` поднимает рабочее приложение на `localhost:8080`.
 
 ## 9. Чего не делать
 

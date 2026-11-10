@@ -120,14 +120,5 @@ services:
       - "8080:80"
     restart: unless-stopped
 
-  # Публичный доступ из интернета без аккаунта Cloudflare.
-  # Ссылку смотрите в `docker compose logs tunnel`.
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate --protocol http2 --url http://app:80
-    depends_on:
-      - app
-    restart: unless-stopped
-
 volumes:
   db-data:
